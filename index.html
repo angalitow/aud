@@ -86,6 +86,26 @@
     font-size: 0.9rem;
     color: #777;
   }
+  #downloadBtn {
+    margin-top: 1rem;
+    display: inline-block;
+    background: #4a00e0;
+    color: white;
+    font-weight: 700;
+    padding: 0.8rem 1.2rem;
+    border-radius: 8px;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.3s ease;
+  }
+  #downloadBtn:hover {
+    background: #8e2de2;
+  }
+  #downloadBtn[aria-disabled="true"] {
+    background: #555;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
 </style>
 </head>
 <body>
@@ -95,7 +115,7 @@
   <input type="file" id="audioInput" accept="audio/*" />
   
   <button id="processBtn" disabled>Remasterizar Canción</button>
-  <button id="downloadBtn" disabled>Descargar Audio Remasterizado</button>
+  <a id="downloadBtn" href="#" download="audio_remasterizado.wav" aria-disabled="true" style="display:none;">Descargar Audio Remasterizado</a>
 
   <div class="status" id="status">Esperando archivo...</div>
 
@@ -118,15 +138,34 @@
   let audioContext;
   let originalBuffer;
   let processedBuffer;
+  let processedBlobURL;
+
+  function resetUI(error = false) {
+    processBtn.disabled = true;
+    downloadBtn.style.display = 'none';
+    downloadBtn.href = '#';
+    downloadBtn.setAttribute('aria-disabled', 'true');
+    processedAudio.src = '';
+    if (!error) {
+      status.textContent = 'Esperando archivo...';
+      originalAudio.src = '';
+    }
+  }
 
   audioInput.addEventListener('change', async (e) => {
     if (!e.target.files.length) return resetUI();
 
     const file = e.target.files[0];
+
+    // Limpiar URL previos para evitar fugas
+    if (processedBlobURL) {
+      URL.revokeObjectURL(processedBlobURL);
+      processedBlobURL = null;
+    }
+
     status.textContent = 'Cargando archivo...';
     processBtn.disabled = true;
-    downloadBtn.disabled = true;
-    processedAudio.src = '';
+    resetDownload();
 
     const fileURL = URL.createObjectURL(file);
     originalAudio.src = fileURL;
@@ -140,6 +179,7 @@
       status.textContent = 'Archivo cargado correctamente. Puedes remasterizar.';
       processBtn.disabled = false;
     } catch (err) {
+      console.error('Error al cargar archivo: ', err);
       status.textContent = 'Error al cargar archivo. Intenta otro.';
       resetUI(true);
     }
@@ -150,40 +190,39 @@
 
     status.textContent = 'Procesando (remasterizando) audio... Esto puede tardar unos segundos...';
     processBtn.disabled = true;
-    downloadBtn.disabled = true;
+    resetDownload();
 
     try {
       processedBuffer = await remasterAudio(originalBuffer);
 
       const wavBlob = audioBufferToWavBlob(processedBuffer);
-      const processedURL = URL.createObjectURL(wavBlob);
+      processedBlobURL = URL.createObjectURL(wavBlob);
 
-      processedAudio.src = processedURL;
-      downloadBtn.href = processedURL;
-      downloadBtn.download = "audio_remasterizado.wav";
-      downloadBtn.disabled = false;
+      processedAudio.src = processedBlobURL;
+
+      downloadBtn.href = processedBlobURL;
+      downloadBtn.style.display = 'inline-block';
+      downloadBtn.setAttribute('aria-disabled', 'false');
 
       status.textContent = 'Proceso completado. Escucha y descarga tu audio remasterizado.';
+
     } catch (err) {
-      console.error(err);
+      console.error('Error durante la remasterización:', err);
       status.textContent = 'Error durante la remasterización. Intenta nuevamente.';
     } finally {
       processBtn.disabled = false;
     }
   });
 
-  downloadBtn.addEventListener('click', () => {
-    // El enlace ya está configurado
-  });
-
-  function resetUI(error = false) {
-    processBtn.disabled = true;
-    downloadBtn.disabled = true;
-    processedAudio.src = '';
-    if (!error) {
-      status.textContent = 'Esperando archivo...';
-      originalAudio.src = '';
+  function resetDownload() {
+    if (processedBlobURL) {
+      URL.revokeObjectURL(processedBlobURL);
+      processedBlobURL = null;
     }
+    downloadBtn.href = '#';
+    downloadBtn.style.display = 'none';
+    downloadBtn.setAttribute('aria-disabled', 'true');
+    processedAudio.src = '';
   }
 
   async function remasterAudio(buffer) {
@@ -255,6 +294,10 @@
     const numberOfChannels = buffer.numberOfChannels;
     const length = buffer.length;
     const sampleRate = buffer.sampleRate;
+
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
 
     const newBuffer = audioContext.createBuffer(numberOfChannels, length, sampleRate);
 
