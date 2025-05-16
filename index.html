@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Remasterización de Música con IA Simulada</title>
+<style>
+  /* Estilo moderno, oscuro y cool */
+  body {
+    background: #121212;
+    color: #eee;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+  }
+  header {
+    padding: 2rem 0 1rem;
+    font-size: 2.2rem;
+    font-weight: bold;
+    letter-spacing: 0.1rem;
+    background: linear-gradient(45deg, #8e2de2, #4a00e0);
+    width: 100%;
+    text-align: center;
+    color: #fff;
+    box-shadow: 0 4px 10px rgba(74,0,224,0.7);
+  }
+  main {
+    flex: 1;
+    width: 90%;
+    max-width: 700px;
+    padding: 1.5rem;
+    background: #222;
+    margin: 1.5rem 0;
+    border-radius: 12px;
+    box-shadow: 0 0 15px #4a00e0aa;
+  }
+  label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+  }
+  input[type="file"] {
+    width: 100%;
+    padding: 0.3rem;
+    background: #333;
+    color: #eee;
+    border: none;
+    border-radius: 6px;
+  }
+  button {
+    margin-top: 1rem;
+    background: #4a00e0;
+    border: none;
+    padding: 0.8rem 1.2rem;
+    font-weight: 700;
+    color: white;
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.3s ease;
+  }
+  button:hover:enabled {
+    background: #8e2de2;
+  }
+  button:disabled {
+    background: #555;
+    cursor: not-allowed;
+  }
+  audio {
+    margin-top: 1.2rem;
+    width: 100%;
+    outline: none;
+  }
+  .status {
+    margin-top: 1rem;
+    font-style: italic;
+    text-align: center;
+  }
+  .footer {
+    text-align: center;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+    color: #777;
+  }
+</style>
+</head>
+<body>
+<header>Remasterización de Música con IA Simulada</header>
+<main>
+  <label for="audioInput">Selecciona un archivo de música (mp3, wav, ogg):</label>
+  <input type="file" id="audioInput" accept="audio/*" />
+  
+  <button id="processBtn" disabled>Remasterizar Canción</button>
+  <button id="downloadBtn" disabled>Descargar Audio Remasterizado</button>
+
+  <div class="status" id="status">Esperando archivo...</div>
+
+  <label>Reproducir Audio Original:</label>
+  <audio id="originalAudio" controls></audio>
+
+  <label style="margin-top:1rem;">Reproducir Audio Remasterizado:</label>
+  <audio id="processedAudio" controls></audio>
+</main>
+<div class="footer">Proyecto Demo - Remasterización de Audio con procesamiento Web Audio API</div>
+
+<script>
+  const audioInput = document.getElementById('audioInput');
+  const processBtn = document.getElementById('processBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const originalAudio = document.getElementById('originalAudio');
+  const processedAudio = document.getElementById('processedAudio');
+  const status = document.getElementById('status');
+
+  let audioContext;
+  let originalBuffer;
+  let processedBuffer;
+
+  audioInput.addEventListener('change', async (e) => {
+    if (!e.target.files.length) return resetUI();
+
+    const file = e.target.files[0];
+    status.textContent = 'Cargando archivo...';
+    processBtn.disabled = true;
+    downloadBtn.disabled = true;
+    processedAudio.src = '';
+
+    const fileURL = URL.createObjectURL(file);
+    originalAudio.src = fileURL;
+
+    try {
+      if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+      const arrayBuffer = await file.arrayBuffer();
+      originalBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+      status.textContent = 'Archivo cargado correctamente. Puedes remasterizar.';
+      processBtn.disabled = false;
+    } catch (err) {
+      status.textContent = 'Error al cargar archivo. Intenta otro.';
+      resetUI(true);
+    }
+  });
+
+  processBtn.addEventListener('click', async () => {
+    if (!originalBuffer) return;
+
+    status.textContent = 'Procesando (remasterizando) audio... Esto puede tardar unos segundos...';
+    processBtn.disabled = true;
+    downloadBtn.disabled = true;
+
+    try {
+      processedBuffer = await remasterAudio(originalBuffer);
+
+      const wavBlob = audioBufferToWavBlob(processedBuffer);
+      const processedURL = URL.createObjectURL(wavBlob);
+
+      processedAudio.src = processedURL;
+      downloadBtn.href = processedURL;
+      downloadBtn.download = "audio_remasterizado.wav";
+      downloadBtn.disabled = false;
+
+      status.textContent = 'Proceso completado. Escucha y descarga tu audio remasterizado.';
+    } catch (err) {
+      console.error(err);
+      status.textContent = 'Error durante la remasterización. Intenta nuevamente.';
+    } finally {
+      processBtn.disabled = false;
+    }
+  });
+
+  downloadBtn.addEventListener('click', () => {
+    // El enlace ya está configurado
+  });
+
+  function resetUI(error = false) {
+    processBtn.disabled = true;
+    downloadBtn.disabled = true;
+    processedAudio.src = '';
+    if (!error) {
+      status.textContent = 'Esperando archivo...';
+      originalAudio.src = '';
+    }
+  }
+
+  async function remasterAudio(buffer) {
+    const offlineCtx = new OfflineAudioContext(
+      buffer.numberOfChannels,
+      buffer.length,
+      buffer.sampleRate
+    );
+
+    const source = offlineCtx.createBufferSource();
+    source.buffer = buffer;
+
+    const compressor = offlineCtx.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-24, offlineCtx.currentTime);
+    compressor.knee.setValueAtTime(30, offlineCtx.currentTime);
+    compressor.ratio.setValueAtTime(12, offlineCtx.currentTime);
+    compressor.attack.setValueAtTime(0.003, offlineCtx.currentTime);
+    compressor.release.setValueAtTime(0.25, offlineCtx.currentTime);
+
+    const eqLow = offlineCtx.createBiquadFilter();
+    eqLow.type = 'lowshelf';
+    eqLow.frequency.setValueAtTime(200, offlineCtx.currentTime);
+    eqLow.gain.setValueAtTime(4, offlineCtx.currentTime);
+
+    const eqMid = offlineCtx.createBiquadFilter();
+    eqMid.type = 'peaking';
+    eqMid.frequency.setValueAtTime(1000, offlineCtx.currentTime);
+    eqMid.Q.setValueAtTime(1, offlineCtx.currentTime);
+    eqMid.gain.setValueAtTime(3, offlineCtx.currentTime);
+
+    const eqHigh = offlineCtx.createBiquadFilter();
+    eqHigh.type = 'highshelf';
+    eqHigh.frequency.setValueAtTime(5000, offlineCtx.currentTime);
+    eqHigh.gain.setValueAtTime(6, offlineCtx.currentTime);
+
+    source.connect(compressor);
+    compressor.connect(eqLow);
+    eqLow.connect(eqMid);
+    eqMid.connect(eqHigh);
+    eqHigh.connect(offlineCtx.destination);
+
+    source.start(0);
+
+    const renderedBuffer = await offlineCtx.startRendering();
+
+    // Normalización
+    const peak = findPeak(renderedBuffer);
+    const targetPeak = 0.89125; // -1 dBFS aproximado
+    const gainFactor = targetPeak / peak;
+
+    const normalizedBuffer = await normalizeBuffer(renderedBuffer, gainFactor);
+
+    return normalizedBuffer;
+  }
+
+  function findPeak(audioBuffer) {
+    let peak = 0;
+    for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+      const data = audioBuffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const absVal = Math.abs(data[i]);
+        if (absVal > peak) peak = absVal;
+      }
+    }
+    return peak;
+  }
+
+  function normalizeBuffer(buffer, gain) {
+    const numberOfChannels = buffer.numberOfChannels;
+    const length = buffer.length;
+    const sampleRate = buffer.sampleRate;
+
+    const newBuffer = audioContext.createBuffer(numberOfChannels, length, sampleRate);
+
+    for (let ch = 0; ch < numberOfChannels; ch++) {
+      const oldData = buffer.getChannelData(ch);
+      const newData = newBuffer.getChannelData(ch);
+
+      for (let i = 0; i < length; i++) {
+        let sample = oldData[i] * gain;
+        // limitar para evitar clipping
+        sample = Math.max(-1, Math.min(1, sample));
+        newData[i] = sample;
+      }
+    }
+    return newBuffer;
+  }
+
+  // Convierte AudioBuffer a Blob WAV (pcm 16bit)
+  function audioBufferToWavBlob(buffer) {
+    const numChannels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    const format = 1; // PCM
+    const bitDepth = 16;
+
+    // longitud de datos
+    const samples = buffer.length * numChannels;
+    const blockAlign = numChannels * bitDepth / 8;
+    const byteRate = sampleRate * blockAlign;
+    const dataSize = samples * bitDepth / 8;
+    const bufferLength = 44 + dataSize;
+
+    const arrayBuffer = new ArrayBuffer(bufferLength);
+    const view = new DataView(arrayBuffer);
+
+    // Helper escribir string
+    function writeString(view, offset, str) {
+      for (let i = 0; i < str.length; i++) {
+        view.setUint8(offset + i, str.charCodeAt(i));
+      }
+    }
+
+    // RIFF Chunk
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeString(view, 8, 'WAVE');
+    // fmt subchunk
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true); // Subchunk1Size
+    view.setUint16(20, format, true); // Audio format
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitDepth, true);
+    // data subchunk
+    writeString(view, 36, 'data');
+    view.setUint32(40, dataSize, true);
+
+    // write interleaved data
+    let offset = 44;
+    for (let i = 0; i < buffer.length; i++) {
+      for (let ch = 0; ch < numChannels; ch++) {
+        let sample = buffer.getChannelData(ch)[i];
+        sample = Math.max(-1, Math.min(1, sample));
+        const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+        view.setInt16(offset, intSample, true);
+        offset += 2;
+      }
+    }
+
+    return new Blob([arrayBuffer], { type: 'audio/wav' });
+  }
+</script>
+</body>
+</html>
+
